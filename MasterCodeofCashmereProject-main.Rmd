@@ -1,0 +1,700 @@
+---
+title: "CoefPlots of ParallelTrendsTest"
+author: "Peng Sun"
+date: "10/03/2022"
+output: html_document
+---
+#Load packages
+```{r load packages, message=FALSE, warning=FALSE}
+#install.packages("clubSandwich")
+library(readr)
+library(did)
+library(fixest)
+library(DRDID)
+library(tidyverse)
+library(plm)
+library(stargazer)
+library(sandwich)
+library(lmtest)
+library(jtools)
+library(clubSandwich)
+```
+
+
+#read data
+```{r}
+setwd("~/R")
+df2012<-read_csv("~/R/df2012_20210920.csv")
+```
+
+
+```{r}
+# set levels of timedummy variables so that Y2012 will be used as 
+names(df2012)
+unique(df2012$timedummy)
+```
+
+
+```{r}
+df2012$timedummy<-fct_relevel(df2012$timedummy,levels="Y2012","Y2013","Y2014","Y2015","Y2016","Y2017","janapr18","t1","t2")
+df2012$groups<-fct_relevel(df2012$groups, levels="C","A","B","D")
+#set levels of groups dummies so that Group C will be used as base
+
+
+
+unique(df2012$groups)
+# set levels of period dummies so that t0 period will be used as base
+df2012$periods<-fct_relevel(df2012$periods, levels="t0","t1","t2")
+df2012<-df2012%>%select(-1)
+names(df2012)
+
+```
+
+# check on data errors
+```{r eval=FALSE, include=FALSE}
+df2012%>% group_by(salesid) %>% filter (A+B+C+D !=1)  #0
+df2012%>% group_by(periods) %>% filter (t0+t1+t2 !=1) #0
+df2012%>% filter(B==1)%>% count() #1236
+df2012%>% filter(C==1)%>% count() #6492
+df2012%>% filter(D==1)%>% count() #5412
+1598+5412+6492+1236  #14738
+df2012%>% filter(t0==1)%>% count() #10057
+df2012%>% filter(t1==1)%>% count() #2484 
+df2012%>% filter(t2==1)%>% count()  #2197
+10057+2484+2197  #14738 
+#install.packages("vtable")
+#library(vtable)
+#vtable::sumtable(df2012)
+```
+
+
+
+```{r}
+df2012<-df2012 %>%
+   mutate(timedummy2=case_when(year==2012~"Y2012",
+                            year==2013~"Y2013",
+                            year==2014~"Y2014",
+                            year==2015~"Y2015",
+                            year==2016~"Y2016",
+                            year==2017~"Y2017",
+                          janapr18==1~"Y2018janapr",
+                            t1==1~"Yt1",
+                            t2==1~"Yt2"))
+df2012<- df2012%>% 
+  mutate(timedummy3=as.factor(yearqrt))
+class(df2012$timedummy3)
+unique(df2012$timedummy3)
+unique(df2012$timedummy2)
+df2012<-df2012%>%
+  mutate(timedummy6= case_when(timedummy3=="2012 Q1"~ "Y2012Q1",
+                             timedummy3=="2012 Q2"~ "Y2012Q2",
+                             timedummy3=="2012 Q3"~ "Y2012Q3",
+                             timedummy3=="2012 Q4"~ "Y2012Q4",
+                             timedummy3=="2013 Q1"~ "Y2013Q1",
+                             timedummy3=="2013 Q2"~ "Y2013Q2",
+                             timedummy3=="2013 Q3"~ "Y2013Q3",
+                             timedummy3=="2013 Q4"~ "Y2013Q4",
+                             timedummy3=="2014 Q1"~ "Y2014Q1",
+                             timedummy3=="2014 Q2"~ "Y2014Q2",
+                             timedummy3=="2014 Q3"~ "Y2014Q3",
+                             timedummy3=="2014 Q4"~ "Y2014Q4",
+                             timedummy3=="2015 Q1"~ "Y2015Q1",
+                             timedummy3=="2015 Q2"~ "Y2015Q2",
+                             timedummy3=="2015 Q3"~ "Y2015Q3",
+                             timedummy3=="2015 Q4"~ "Y2015Q4",
+                             timedummy3=="2016 Q1"~ "Y2016Q1",
+                             timedummy3=="2016 Q2"~ "Y2016Q2",
+                             timedummy3=="2016 Q3"~ "Y2016Q3",
+                             timedummy3=="2016 Q4"~ "Y2016Q4",
+                             timedummy3=="2017 Q1"~ "Y2017Q1",
+                             timedummy3=="2017 Q2"~ "Y2017Q2",
+                             timedummy3=="2017 Q3"~ "Y2017Q3",
+                             timedummy3=="2017 Q4"~ "Y2017Q4",
+                             janapr18==1~"Y2018janapr",
+                             t1==1~"Yt2",
+                             t2==1~"Yt3"
+                             ))
+unique(df2012$timedummy6)
+df2012$timedummy6<-fct_relevel(df2012$timedummy6, levels="Y2012Q1","Y2012Q2","Y2012Q3","Y2012Q4","Y2013Q1","Y2013Q2","Y2013Q3","Y2013Q4","Y2014Q1","Y2014Q2","Y2014Q3","Y2014Q4","Y2015Q1","Y2015Q2","Y2015Q3","Y2015Q4","Y2016Q1","Y2016Q2","Y2016Q3","Y2016Q4","Y2017Q1","Y2017Q2","Y2017Q3","Y2017Q4","Y2018janapr","Yt2","Yt3")
+```
+
+```{r}
+df2012_mutated <-  df2012  
+ df2012_mutated$contour=replace_na(df2012_mutated$contour,"Unreported") 
+ df2012_mutated$deck=replace_na(df2012_mutated$deck,"Unreported")   
+  
+ df2012_mutated$roof_material=replace_na(df2012_mutated$roof_material,"Unreported") 
+ df2012_mutated$wall_material=replace_na(df2012_mutated$wall_material,"Unreported") 
+ df2012_mutated$building_age=replace_na(df2012_mutated$building_age,"Unreported")
+df2012_mutated$land_area=replace_na(df2012_mutated$land_area,0.069) 
+df2012_mutated$floor_area=replace_na(df2012_mutated$floor_area,136) 
+
+# use a mean for land_area and floor_are
+```
+```{r}
+#df2012_mutated$garages_mainroof=replace_na(df2012_mutated$garages_mainroof,"Unreported") 
+```
+```{r}
+```
+
+
+```{r}
+garage=df2012_mutated$garages_mainroof
+```
+```{r}
+which(is.na(garage))
+```
+```{r}
+# replace msising values with Unreported
+garage[is.na(garage)]<-"Unreported"
+```
+
+```{r}
+which(is.na(garage))
+```
+```{r}
+df2012_mutated$garages_mainroof<-garage
+```
+
+
+```{r}
+
+#ABCD_t1<-subset(df2012,df2012$t2!=1)
+#ABCD_t2<-subset(df2012,df2012$t0!=1)
+#ABCD_t1_mutated<-subset(df2012_mutated,df2012_mutated$t2!=1)
+#ABCD_t2_mutated<-subset(df2012_mutated,df2012_mutated$t0!=1)
+df2012_ABC<-subset(df2012, df2012$D!=1)
+df2012_BC_3p=subset(df2012_ABC, df2012_ABC$A!=1)
+df2012_AC=subset(df2012_ABC,df2012_ABC$B!=1)
+df2012_ABC_mutated<-subset(df2012_mutated, df2012_mutated$D!=1)
+df2012_BC_3p_mutated=subset(df2012_ABC_mutated, df2012_ABC_mutated$A!=1)
+df2012_AC_mutated=subset(df2012_ABC_mutated,df2012_ABC_mutated$B!=1)
+#df2012_ABCt0t1=subset(df2012_ABC, df2012_ABC$t2!=1)
+#df2012_ABCt0t1_mutated=subset(df2012_ABC_mutated, df2012_ABC_mutated$t2!=1)
+#df2012_ABCt1t2=subset(df2012_ABC, df2012_ABC$t0!=1)
+#df2012_ABCt1t2_mutated=subset(df2012_ABC_mutated, df2012_ABC_mutated$t0!=1)
+#df2012_BC_2p=subset(df2012_BC_3p, df2012_BC_3p$t0!=1)
+#df2012_BC_2p_mutated=subset(df2012_BC_3p_mutated,df2012_BC_3p_mutated$t0!=1)
+#df2012_ACt0t1=subset(df2012_AC,df2012_AC$t2!=1)
+#df2012_ACt0t1_mutated=subset(df2012_AC_mutated,df2012_AC_mutated$t2!=1)
+#df2012_ACt1t2=subset(df2012_AC,df2012_AC$t0!=1)
+#df2012_ACt1t2_mutated=subset(df2012_AC_mutated,df2012_AC_mutated$t0!=1)
+
+
+```
+# With 2012 dataset
+
+```{r}
+unique(df2012$bedrooms_min)
+```
+
+```{r}
+# check the number of small houses with only one bedroom
+library(janitor)
+tabyl(df2012, groups, bedrooms_min)
+
+```
+
+
+```{r}
+ggplot(data=df2012)+
+  geom_bar(mapping=aes(x=groups, fill=periods), position="dodge")+
+  theme(axis.text.x = element_text(angle = 0, size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+```
+```{r}
+summary_groupmean<-  df2012 %>%
+     group_by(groups,periods) %>%
+     summarise(meanlp = mean(lp))
+table(summary_groupmean)
+```
+
+# plot of group mean over time
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+  
+groupmean <- df2012 %>%
+     group_by(groups,timedummy2) %>%
+     summarize(meanlp = mean(lp))
+#C	t1'	13.036364
+#C	t2'	13.37316
+
+
+plot_parallel_trend <- groupmean %>%
+  ggplot(aes(timedummy2, meanlp, color=groups))+
+  geom_line(aes(group=groups), alpha=5) + 
+  geom_vline(xintercept ="Y2018janapr" ) +
+  geom_vline(xintercept ="Yt1" )+theme()
+plot_parallel_trend
+
+
+```
+```{r}
+ggplot(data=df2012)+
+  geom_bar(mapping=aes(x=periods, fill=groups), position="dodge")+
+  theme(axis.text.x = element_text( size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+```
+
+
+
+```{r}
+ggplot(data=df2012)+
+  geom_bar(mapping=aes(x=timedummy2, fill=groups), position="dodge")
+
+```
+```{r}
+ggplot(data=df2012)+
+  geom_bar(mapping=aes(x=timedummy2, fill=groups), position="dodge")+
+  coord_flip()
+```
+```{r}
+ggplot(data=df2012, aes(x=df2012$gross_sale_price.y))+
+  geom_density()+
+  theme(axis.text.x = element_text( size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+```
+
+
+```{r}
+ggplot(data=df2012, aes(x=lp))+
+  geom_density()+
+  theme(axis.text.x = element_text( size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+```
+
+```{r}
+ggplot(data=df2012, aes(x=salesprice))+
+  geom_density()
+```
+
+
+```{r}
+df2012%>% group_by(groups)%>%
+ggplot(aes(x=lp))+
+  geom_density()+facet_wrap(~groups)
+```
+
+# Define Periods Name as Period_t1, t2 and t3, instead of t0, t1 and t2, and create periods2 as the new category variable. 
+```{r}
+df2012$Period_t1<-df2012$t0
+df2012$Period_t2<-df2012$t1
+df2012$Period_t3<-df2012$t2
+df2012$periods2<-case_when(df2012$Period_t1==1~"t1",
+                           df2012$Period_t2==1~"t2",
+                           df2012$Period_t3==1~"t3")
+```
+
+```{r}
+
+
+df2012%>% group_by(periods2)%>%
+ggplot(aes(x=groups, y=lp))+
+  geom_boxplot()+facet_wrap(~periods2)+
+  theme(axis.text.x = element_text(size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+
+```
+```{r}
+df2012%>% group_by(groups)%>%
+ggplot(aes(x=periods2, y=lp))+
+  geom_boxplot()+facet_wrap(~groups)+
+  theme(axis.text.x = element_text( size=14), plot.title = element_text(size = 16), axis.title=element_text(size = 16))
+
+```
+
+
+
+```{r}
+df2012%>% group_by(groups)%>%
+ggplot(aes(x=lp))+
+  geom_density()+facet_wrap(~groups+periods, nrow =4)
+```
+
+
+```{r}
+library(ggplot2)
+
+  
+groupmean <- df2012 %>%
+     group_by(groups,yearqrt) %>%
+     summarise(meanlp = mean(lp))
+
+groupmean %>%
+  ggplot(aes(yearqrt, meanlp, color=groups))+
+  geom_line(aes(group=groups), alpha=1) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+```{r}
+#View(groupmean)
+```
+
+
+```{r}
+mean <- df2012 %>%
+     group_by(groups,yearqrt) %>%
+     summarise(meanprice = mean(salesprice))
+mean%>%
+  ggplot(aes(yearqrt, meanprice, color=groups))+
+  geom_line(aes(group=groups),alpha=1) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+write.csv(df2012, "chapter1_df2012.csv")
+```
+```{r}
+write.csv(df2012_mutated, "chapter1_df2012mutated.csv")
+```
+
+#column 1
+```{r}
+plm_1<-plm(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="pooling", index=c("houseid","year") )
+summary(plm_1)
+```
+
+
+```{r}
+coefplot(plm_1,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+#Column 2 
+```{r}
+
+lm_housefeature2<-lm(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(lm_housefeature2)
+```
+
+
+```{r}
+coefplot(lm_housefeature2,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+#Column 3, these two are the same
+
+
+
+```{r}
+plm_year<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year)
+```
+
+```{r}
+coefplot(plm_year,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+
+#plm_year_coef<-coef_test(plm_year, vcov="CR2", cluster=df2012$houseid, test="Satterthwaite")
+
+```
+
+
+# Column 4
+```{r}
+housefeature_pretrends<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_mutated,model="pooling", index=c("houseid","year"))
+summary(housefeature_pretrends)
+```
+
+#calculate counterfactual values of lp for C as if groupC is also treated (losing access to CHS)
+```{r}
+#testC<-subset(df2012, df2012$C==1)
+#install.pacakges()
+```
+
+
+#coef graph of Column 4
+```{r}
+coefplot(housefeature_pretrends,ylim=c(-0.4,0.4), keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","A:t1", "A:t2"), axis.text.x = element_text(size=14))
+```
+
+```{r}
+coefplot(housefeature_pretrends,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B", "B:t1","B:t2"), axis.text.x = element_text(size=14))
+```
+```{r}
+coefplot(housefeature_pretrends, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D", "D:t1", "D:t2"), axis.text.x = element_text(size=14))
+```
+
+
+
+
+# Column 5, pretrends controlled, with 2018JanApr and C as baseline
+```{r}
+plm_year_house_parallel2018<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallel2018)
+```
+
+```{r}
+#plm_year_parallel_coef<-coef_test(plm_year_house_parallel2018, vcov="CR2", cluster=df2012$houseid, test="Satterthwaite")
+```
+
+
+```{r}
+pooltest(housefeature_pretrends,plm_year_house_parallel2018)
+```
+```{r}
+pooltest(plm_year_house_parallel2018, housefeature_pretrends)
+```
+
+
+
+#Coef graph of column 5
+
+```{r}
+coefplot(plm_year_house_parallel2018, keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","janapr18:A"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# transfer coefficients into percentage for the parameters of interest
+exp(-0.031601)-1#[1] -0.03110691
+exp(-0.14608)-1 # -0.1359114
+```
+
+
+# A Vs C, T1 Vs T2+T3
+
+```{r}
+# Column 1
+AC_did1<-plm(lp ~ I(t1 + t2) + A * I(t1 + t2), data = df2012_AC, 
+     model = "pooling",index=c("houseid","year") )
+summary(AC_did1)
+```
+
+
+```{r}
+#Column 2
+
+lm_housefeatureAC<-lm(lp~I(t1 + t2) + A * I(t1 + t2)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_AC_mutated)
+summary(lm_housefeatureAC)
+```
+```{r}
+dim(df2012_AC_mutated)
+8090-18
+```
+
+```{r}
+#column 3
+plm_AC3<-plm(lp~I(t1 + t2) + A * I(t1 + t2)+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18,data=df2012_AC, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_AC3)
+
+```
+
+
+```{r}
+# Column 4
+housefeature_pretrendsAC<-plm(lp~I(t1 + t2) +A+  I(t1 + t2)*A+yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_AC_mutated,model="pooling", index=c("houseid","year"))
+summary(housefeature_pretrendsAC)
+```
+```{r}
+# Column5 
+plm_year_house_parallel2018AC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+I(t1 + t2) +A+ A * I(t1 + t2),data=df2012_AC, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallel2018AC)
+```
+# generate graph for Column 4
+```{r}
+coefplot(housefeature_pretrendsAC,keep=c("A:yr2012","A:yr2013","A:yr2014","A:yr2015","A:yr2016","A:yr2017"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018AC,
+         keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A"), axis.text.x = element_text(size=14))
+```
+# BC T1+2 Vs T3
+```{r}
+#column 1
+BCdid<-lm(lp~B*t2,data=df2012_BC_3p)
+summary(BCdid)
+```
+
+
+```{r}
+#Column 2
+lm_housefeatureBC<-lm(lp~B*t2+as.factor(timedummy2)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour) +as.factor(suburb),data=df2012_BC_3p_mutated)
+summary(lm_housefeatureBC)
+```
+
+
+```{r}
+plm_BC4<-plm(lp~ B *t2+as.factor(timedummy2),data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_BC4)
+```
+
+
+```{r}
+#Column 3
+plm_BC3<-plm(lp~ B *t2+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+t1+t2+B,data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_BC3)
+```
+
+
+
+```{r}
+#Column 4
+housefeature_pretrendsBC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+janapr18*B+ B * t2+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_BC_3p_mutated,model="pooling", index=c("houseid","year"))
+summary(housefeature_pretrendsBC)
+```
+```{r}
+coefplot(housefeature_pretrendsBC,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B","janapr18:B"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# Column5 
+unique(df2012$timedummy)
+plm_year_house_parallelBC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+janapr18*B+ B * t2,data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallelBC)
+```
+
+```{r}
+coefplot(plm_year_house_parallelBC,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B","janapr18:B"), axis.text.x = element_text(size=14))
+```
+
+
+
+
+# Check how many houses are sold before and after each downsizing
+```{r}
+#generate two subsets of houses from A sold pre and post 
+houseAt0<-df2012%>% filter(A==1) %>% filter (t0==1)  #1091 sales from 912 houses
+dim(houseAt0)
+length(unique(houseAt0$houseid))
+houseAt1<-df2012%>% filter(A==1) %>% filter (t1==1) #257 sales from 254 houses
+dim(houseAt1)
+length(unique(houseAt1$houseid))
+houseAt1t2<-df2012%>% filter(A==1) %>% filter (t1==1|t2==1) #507 sales from 487 houses
+dim(houseAt1t2)
+length(unique(houseAt1t2$houseid))
+houseAt2<-df2012%>% filter(A==1) %>% filter (t2==1) #250 sales from 248 houses
+dim(houseAt2)
+length(unique(houseAt2$houseid))
+t2A<-unique(houseAt2$houseid)
+y<-unique(houseAt0$houseid)
+resultAt0t2<-t2A %in% y
+sort(resultAt0t2,decreasing=TRUE) #117 houses found sold in both t0 and t2
+# generate two vectors for houseid from both subsets
+y<-unique(houseAt0$houseid)#1091
+x<-unique(houseAt1$houseid) #257
+x2<-unique(houseAt1t2$houseid) #487
+# check if houseid from post also appeared in 
+? "%in%"
+resultAt1<-x %in% y  # return True& False, 92 TRUEs returned
+resultAt1t2<-x2 %in% y   # 203 TRUES Returned
+sort(resultAt1t2,decreasing=TRUE)
+sort(resultAt1, decreasing=TRUE)
+# example of %in% usage
+#m<-c(1,12,23,45)
+#n<-c(11,12,122,123,145)
+#m %in% n
+
+```
+
+
+```{r}
+#generate two subsets of houses from A sold pre and post 
+houseBt0<-df2012%>% filter(B==1) %>% filter (t0==1)  #857 sales from 735 houses
+dim(houseBt0)
+length(unique(houseBt0$houseid))  
+houseBt1<-df2012%>% filter(B==1) %>% filter (t1==1) #194 sales from 187 houses
+dim(houseBt1) 
+length(unique(houseBt1$houseid))
+houseBt2<-df2012%>% filter(B==1) %>% filter (t2==1) #185 sales from 183 houses
+dim(houseBt2) 
+length(unique(houseBt2$houseid))
+houseBt1t2<-df2012%>% filter(B==1) %>% filter (t1==1|t2==1) #379 sales from 358 houses
+dim(houseBt1t2)
+length(unique(houseBt1t2$houseid))
+# generate two vectors for houseid from both subsets
+yB<-unique(houseBt0$houseid) 
+xB<-unique(houseBt1$houseid) 
+t2B<-unique(houseBt2$houseid)
+resultBt0t2<-t2B %in% yB
+sort(resultBt0t2,decreasing=TRUE)  #82 houses found with sales in both t0 and t2
+xB %in% yB  #78 trues returned
+
+xB2<-unique(houseBt1t2$houseid) 
+# check if houseid from post also appeared in 
+? "%in%"
+resultBt1t2<-xB2 %in% yB  # 155 TRUES Returned
+sort(resultBt1t2,decreasing=TRUE)
+```
+
+```{r eval=FALSE, include=FALSE}
+#generate two subsets of houses from A sold pre and post 
+houseCt0<-df2012%>% filter(C==1) %>% filter (t0==1)  #4399 sales from 3746 houses
+dim(houseCt0)
+length(unique(houseCt0$houseid))  
+houseCt1<-df2012%>% filter(C==1) %>% filter (t1==1) #1110 sales from 1089 houses
+dim(houseCt1) 
+length(unique(houseCt1$houseid))
+houseCt1t2<-df2012%>% filter(C==1) %>% filter (t1==1|t2==1) # 2093 sales from 1976  houses
+dim(houseCt1t2)
+length(unique(houseCt1t2$houseid))
+houseCt2<-df2012%>% filter(C==1) %>% filter (t2==1) #983 sales from 960 houses
+dim(houseCt2)
+length(unique(houseCt2$houseid))
+t2C<-unique(houseCt2$houseid)
+yC<-unique(houseCt0$houseid) 
+xC<-unique(houseCt1$houseid) 
+resultCt0t2<-t2C %in% yC
+sort(resultCt0t2,decreasing=TRUE)  # 388 houses with sales in both t0 and t2
+# generate two vectors for houseid from both subsets
+
+resultCt1<-xC %in% yC # trues returned
+View(resultCt1)
+sort(resultCt1, decreasing=TRUE)  #418TRUES
+xC2<-unique(houseCt1t2$houseid) 
+# check if houseid from post also appeared in 
+? "%in%"
+
+resultCt1t2<-xC2 %in% yC  # 782 TRUES Returned
+sort(resultCt1t2,decreasing=TRUE)
+```
+```{r eval=FALSE, include=FALSE}
+#generate two subsets of houses from A sold pre and post 
+houseDt0<-df2012%>% filter(D==1) %>% filter (t0==1)  #3710 sales from 3123 houses
+dim(houseDt0)
+length(unique(houseDt0$houseid))  
+houseDt1<-df2012%>% filter(D==1) %>% filter (t1==1) #923 sales from 897 houses
+dim(houseDt1) 
+length(unique(houseDt1$houseid))
+houseDt1t2<-df2012%>% filter(D==1) %>% filter (t1==1|t2==1) # 1702 sales from 1602  houses
+dim(houseDt1t2)
+length(unique(houseDt1t2$houseid))
+houseDt2<-df2012%>% filter(D==1) %>% filter (t2==1) #799 sales from 763 houses
+dim(houseDt2)
+length(unique(houseDt2$houseid))
+t2D<-unique(houseDt2$houseid)
+yD<-unique(houseDt0$houseid) 
+xD<-unique(houseDt1$houseid) 
+resultDt0t2<-t2D %in% yD
+sort(resultDt0t2,decreasing=TRUE)  # 361 houses with sales in both t0 and t2
+# generate two vectors for houseid from both subsets
+
+resultDt1<-xD %in% yD # trues returned
+View(resultDt1)
+sort(resultDt1, decreasing=TRUE)  #367TRUES
+
+xD2<-unique(houseDt1t2$houseid) 
+# check if houseid from post also appeared in 
+? "%in%"
+
+resultDt1t2<-xD2 %in% yD  # 706 TRUES Returned
+sort(resultDt1t2,decreasing=TRUE)
+```

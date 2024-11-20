@@ -1,0 +1,218 @@
+---
+title: "Robustness Check with subsample of houses with two or more bedrooms II"
+author: "Peng Sun"
+date: "10/03/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r load packages, message=FALSE, warning=FALSE}
+#Load packages
+#install.packages("clubSandwich")
+library(readr)
+library(did)
+library(fixest)
+library(DRDID)
+library(tidyverse)
+library(plm)
+library(stargazer)
+library(sandwich)
+library(lmtest)
+library(jtools)
+library(clubSandwich)
+```
+
+```{r,message=FALSE, warning=FALSE}
+#read data
+setwd("~/R")
+df2012<-read_csv("~/R/df2012_20210920.csv")
+```
+
+
+```{r}
+# set levels of timedummy variables so that Y2012 will be used as 
+names(df2012)
+unique(df2012$timedummy)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+df2012$timedummy<-fct_relevel(df2012$timedummy,levels="Y2012","Y2013","Y2014","Y2015","Y2016","Y2017","janapr18","t1","t2")
+#set levels of groups dummies so that Group C will be used as base
+df2012$groups<-fct_relevel(df2012$groups, levels="C","A","B","D")
+# set levels of period dummies so that t0 period will be used as base
+df2012$periods<-fct_relevel(df2012$periods, levels="t0","t1","t2")
+df2012<-df2012%>%select(-1)
+```
+
+```{r}
+df2012<-df2012 %>%
+   mutate(timedummy2=case_when(year==2012~"Y2012",
+                            year==2013~"Y2013",
+                            year==2014~"Y2014",
+                            year==2015~"Y2015",
+                            year==2016~"Y2016",
+                            year==2017~"Y2017",
+                          janapr18==1~"Y2018janapr",
+                            t1==1~"Yt1",
+                            t2==1~"Yt2"))
+unique(df2012$timedummy2)
+```
+
+
+# Robustness check with Control of interaction terms among bedroom#*period, bedroom#*group, bedroom*period*group
+By adding interaction terms: 
+"A*bedrooms_min+B*bedrooms_min+D*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min"
+## Create the subset of houses with two or more bedrooms
+```{r}
+unique(df2012$bedrooms_min)
+```
+
+```{r}
+# check how many obs with one bedroom, zero bedroom or NA
+df2012_2beds<-  df2012 %>% filter(bedrooms_min<=1|bedrooms_min =="NA")
+dim(df2012_2beds) # 168 obs to be dropped for the robustness check
+```
+
+```{r}
+df2012_2morebeds<-  df2012 %>% filter(bedrooms_min>1)
+dim(df2012_2morebeds)
+```
+
+```{r}
+df2012<-df2012_2morebeds
+```
+
+## Create the imputated dataset (used in Col 2 and 4)
+```{r}
+# use the mean land_area and floor_area for imputation
+mean(df2012$land_area, na.rm="true")
+```
+```{r}
+mean(df2012$floor_area)
+# only keep three significant figures
+```
+
+```{r}
+df2012_mutated <-  df2012  
+df2012_mutated$contour=replace_na(df2012_mutated$contour,"Unreported") 
+df2012_mutated$deck=replace_na(df2012_mutated$deck,"Unreported")   
+df2012_mutated$roof_material=replace_na(df2012_mutated$roof_material,"Unreported") 
+df2012_mutated$wall_material=replace_na(df2012_mutated$wall_material,"Unreported") 
+df2012_mutated$building_age=replace_na(df2012_mutated$building_age,"Unreported")
+df2012_mutated$land_area=replace_na(df2012_mutated$land_area,0.069) 
+df2012_mutated$floor_area=replace_na(df2012_mutated$floor_area,136) 
+```
+
+```{r}
+garage=df2012_mutated$garages_mainroof
+```
+
+```{r}
+# replace msising values with Unreported
+garage[is.na(garage)]<-"Unreported"
+```
+
+```{r}
+which(is.na(garage))
+```
+```{r}
+df2012_mutated$garages_mainroof<-garage
+```
+ 
+```{r}
+bedrooms_min=df2012_mutated$bedrooms_min
+# replace msising values with Unreported
+bedrooms_min[is.na(bedrooms_min)]<-"Unreported"
+#head(bedrooms_min)
+df2012_mutated$bedrooms_min<- bedrooms_min
+```
+
+
+##  column 1
+```{r}
+col1_bedrm<-plm(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+A*bedrooms_min+B*bedrooms_min+D*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min,data=df2012, model="pooling", index=c("houseid","year") )
+summary(col1_bedrm)
+```
+
+
+```{r}
+coefplot(col1_bedrm,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+## Column 2 
+```{r}
+
+col2_bedrm<-lm(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+ bedrooms_min  +as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb)+A*bedrooms_min+B*bedrooms_min+D*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min,data=df2012_mutated)
+summary(col2_bedrm)
+```
+
+
+```{r}
+coefplot(col2_bedrm,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+## Column 3 
+
+
+```{r}
+col3_bedrm<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+A*bedrooms_min+B*bedrooms_min+D*bedrooms_min+yr2012*bedrooms_min+yr2013*bedrooms_min+yr2014*bedrooms_min+yr2015*bedrooms_min+yr2016*bedrooms_min+yr2017*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(col3_bedrm)
+```
+
+```{r}
+coefplot(col3_bedrm,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+
+## Column 4
+```{r}
+col4_bedrm<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb)+yr2014*bedrooms_min+yr2015*bedrooms_min+yr2016*bedrooms_min+yr2017*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min,data=df2012_mutated,model="pooling", index=c("houseid","year"))
+summary(col4_bedrm)
+```
+
+
+```{r}
+coefplot(col4_bedrm,ylim=c(-0.4,0.4), keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","A:t1", "A:t2"), axis.text.x = element_text(size=14))
+```
+
+```{r}
+coefplot(col4_bedrm,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B", "B:t1","B:t2"), axis.text.x = element_text(size=14))
+```
+```{r}
+coefplot(col4_bedrm, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D", "D:t1", "D:t2"), axis.text.x = element_text(size=14))
+```
+
+
+
+
+## Column 5
+```{r}
+col5_bedrm<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+yr2014*bedrooms_min+yr2015*bedrooms_min+yr2016*bedrooms_min+yr2017*bedrooms_min+t1*bedrooms_min+t2*bedrooms_min+A*t1*bedrooms_min+B*t1*bedrooms_min+D*t1*bedrooms_min+A*t2*bedrooms_min+B*t2*bedrooms_min+D*t2*bedrooms_min,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(col5_bedrm)
+```
+
+
+
+#Coef graph of column 5
+
+```{r}
+coefplot(col5_bedrm, ylim=c(-0.4,0.4),keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","janapr18:A", "A:t1","A:t2"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(col5_bedrm,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B", "B:t1", "B:t2"), axis.text.x = element_text(size=14))
+```
+
+```{r}
+coefplot(col5_bedrm, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D","D:t1","D:t2"), axis.text.x = element_text(size=14))
+```
+
+
+

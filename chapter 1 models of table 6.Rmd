@@ -1,0 +1,235 @@
+---
+title: "models for Chapter 1 Table 6 main results"
+author: "Peng"
+date: "2023/4/4"
+output: html_document
+---
+
+```{r}
+library(plm)
+```
+
+#column 1
+```{r}
+plm_1<-lm(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012)
+summary(plm_1)
+```
+
+
+```{r}
+coefplot(plm_1,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+#Column 2 
+```{r}
+
+lm_housefeature2<-lm(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(lm_housefeature2)
+```
+
+
+```{r}
+coefplot(lm_housefeature2,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+#Column 3, these two are the same
+
+```{r}
+plm_year2<-lm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(houseid)+as.factor(year),data=df2012)
+summary(plm_year2)
+```
+
+
+```{r}
+plm_year<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year) 
+```
+
+```{r}
+coefplot(plm_year,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+
+#plm_year_coef<-coef_test(plm_year, vcov="CR2", cluster=df2012$houseid, test="Satterthwaite")
+
+```
+
+
+# Column 4
+```{r}
+housefeature_pretrends<-lm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_mutated)
+summary(housefeature_pretrends)
+```
+
+#calculate counterfactual values of lp for C as if groupC is also treated (losing access to CHS)
+```{r}
+#testC<-subset(df2012, df2012$C==1)
+#install.pacakges()
+```
+
+
+#coef graph of Column 4
+```{r}
+coefplot(housefeature_pretrends,ylim=c(-0.4,0.4), keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","A:t1", "A:t2"), axis.text.x = element_text(size=14))
+```
+
+```{r}
+coefplot(housefeature_pretrends,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B", "B:t1","B:t2"), axis.text.x = element_text(size=14))
+```
+```{r}
+coefplot(housefeature_pretrends, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D", "D:t1", "D:t2"), axis.text.x = element_text(size=14))
+```
+
+
+
+
+# Column 5, pretrends controlled, with 2018JanApr and C as baseline
+```{r}
+plm_year_house_parallel2018<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallel2018)
+```
+
+```{r}
+#plm_year_parallel_coef<-coef_test(plm_year_house_parallel2018, vcov="CR2", cluster=df2012$houseid, test="Satterthwaite")
+```
+
+
+```{r}
+pooltest(housefeature_pretrends,plm_year_house_parallel2018)
+```
+```{r}
+pooltest(plm_year_house_parallel2018, housefeature_pretrends)
+```
+
+
+
+#Coef graph of column 5
+
+```{r}
+coefplot(plm_year_house_parallel2018, keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A","janapr18:A", "A:t1", "A:t2"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B", "B:t1","B:t2"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018, keep=c("yr2012:D","yr2013:D","yr2014:D","yr2015:D","yr2016:D","yr2017:D", "D:t1", "D:t2"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# transfer coefficients into percentage for the parameters of interest
+exp(-0.031601)-1#[1] -0.03110691
+exp(-0.14608)-1 # -0.1359114
+```
+
+
+# A Vs C, T1 Vs T2+T3
+
+```{r}
+# Column 1
+AC_did1<-plm(lp ~ I(t1 + t2) + A * I(t1 + t2), data = df2012_AC, 
+     model = "pooling",index=c("houseid","year") )
+summary(AC_did1)
+```
+
+
+```{r}
+#Column 2
+
+lm_housefeatureAC<-lm(lp~I(t1 + t2) + A * I(t1 + t2)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_AC_mutated)
+summary(lm_housefeatureAC)
+```
+```{r}
+dim(df2012_AC_mutated)
+8090-18
+```
+
+```{r}
+#column 3
+plm_AC3<-plm(lp~I(t1 + t2) + A * I(t1 + t2)+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18,data=df2012_AC, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_AC3)
+
+```
+
+
+```{r}
+# Column 4
+housefeature_pretrendsAC<-plm(lp~I(t1 + t2) +A+  I(t1 + t2)*A+yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_AC_mutated,model="pooling", index=c("houseid","year"))
+summary(housefeature_pretrendsAC)
+```
+```{r}
+# Column5 
+plm_year_house_parallel2018AC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+I(t1 + t2) +A+ A * I(t1 + t2),data=df2012_AC, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallel2018AC)
+```
+# generate graph for Column 4
+```{r}
+coefplot(housefeature_pretrendsAC,keep=c("A:yr2012","A:yr2013","A:yr2014","A:yr2015","A:yr2016","A:yr2017"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+coefplot(plm_year_house_parallel2018AC,
+         keep=c("yr2012:A","yr2013:A","yr2014:A","yr2015:A","yr2016:A","yr2017:A"), axis.text.x = element_text(size=14))
+```
+# BC T1+2 Vs T3
+```{r}
+#column 1
+BCdid<-lm(lp~B*t2,data=df2012_BC_3p)
+summary(BCdid)
+```
+
+
+```{r}
+#Column 2
+lm_housefeatureBC<-lm(lp~B*t2+as.factor(timedummy2)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour) +as.factor(suburb),data=df2012_BC_3p_mutated)
+summary(lm_housefeatureBC)
+```
+
+
+```{r}
+plm_BC4<-plm(lp~ B *t2+as.factor(timedummy2),data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_BC4)
+```
+
+
+```{r}
+#Column 3
+plm_BC3<-plm(lp~ B *t2+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+t1+t2+B,data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_BC3)
+```
+
+
+
+```{r}
+#Column 4
+housefeature_pretrendsBC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+janapr18*B+ B * t2+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb),data=df2012_BC_3p_mutated,model="pooling", index=c("houseid","year"))
+summary(housefeature_pretrendsBC)
+```
+```{r}
+coefplot(housefeature_pretrendsBC,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B","janapr18:B"), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# Column5 
+unique(df2012$timedummy)
+plm_year_house_parallelBC<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+janapr18+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+janapr18*B+ B * t2,data=df2012_BC_3p, model="within",effect="individual", index=c("houseid","year"))
+summary(plm_year_house_parallelBC)
+```
+
+```{r}
+coefplot(plm_year_house_parallelBC,keep=c("yr2012:B","yr2013:B","yr2014:B","yr2015:B","yr2016:B","yr2017:B","janapr18:B"), axis.text.x = element_text(size=14))
+```

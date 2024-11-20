@@ -1,0 +1,566 @@
+---
+title: "More robustness test"
+author: "Peng"
+date: "2023/3/10"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+library(readr)
+library(did)
+library(fixest)
+library(DRDID)
+library(tidyverse)
+library(plm)
+library(stargazer)
+library(sandwich)
+library(lmtest)
+library(jtools)
+library(clubSandwich)
+library(lubridate)
+```
+
+
+```{r}
+setwd("~/R")
+df2012<-read_csv("~/R/df2012_20210920_datefixed.csv")
+```
+
+```{r}
+df2012$sale_date_splited<- strsplit(df2012$sale_date, "/")
+
+df2012$sale_date_y<- sapply(df2012$sale_date_splited, function(x) x[[3]])
+
+
+df2012$sale_date_m<- sapply(df2012$sale_date_splited, function(x) x[[2]])
+
+
+df2012$sale_date_d<- sapply(df2012$sale_date_splited, function(x) x[[1]])
+
+df2012 <- df2012 %>%
+  mutate(sale_date_q = case_when(
+    month %in% 1:3 ~ "Q1",
+    month %in% 4:6 ~ "Q2",
+    month %in% 7:9 ~ "Q3",
+    month %in% 10:12 ~ "Q4"
+  ))
+
+date_new<-df2012$sale_date_splited
+date_new<-lapply(date_new, function(x) as.Date(paste(x[3], x[2], x[1], sep = "-"), format = "%Y-%m-%d"))
+head(date_new)
+df2012$sale_date_new<-date_new
+
+```
+
+```{r}
+df2012$timedummy<-fct_relevel(df2012$timedummy,levels="Y2012","Y2013","Y2014","Y2015","Y2016","Y2017","janapr18","t1","t2")
+df2012$groups<-fct_relevel(df2012$groups, levels="C","A","B","D")
+#set levels of groups dummies so that Group C will be used as base
+
+df2012$groups_D<-fct_relevel(df2012$groups, levels="D","A","B","C")
+#set levels of groups_D dummies so that Group C will be used as base
+
+unique(df2012$groups)
+# set levels of period dummies so that t0 period will be used as base
+df2012$periods<-fct_relevel(df2012$periods, levels="t0","t1","t2")
+```
+```{r}
+df2012$timedummy<-fct_relevel(df2012$timedummy,levels="Y2012","Y2013","Y2014","Y2015","Y2016","Y2017","janapr18","t1","t2")
+```
+
+
+
+```{r}
+df2012<-df2012 %>%
+   mutate(timedummy2=case_when(year==2012~"Y2012",
+                            year==2013~"Y2013",
+                            year==2014~"Y2014",
+                            year==2015~"Y2015",
+                            year==2016~"Y2016",
+                            year==2017~"Y2017",
+                          janapr18==1~"Y2018janapr",
+                            t1==1~"Yt1",
+                            t2==1~"Yt2"))
+df2012<- df2012%>% 
+  mutate(timedummy3=as.factor(yearqrt))
+class(df2012$timedummy3)
+unique(df2012$timedummy3)
+unique(df2012$timedummy2)
+df2012<-df2012%>%
+  mutate(timedummy6= case_when(timedummy3=="2012 Q1"~ "Y2012Q1",
+                             timedummy3=="2012 Q2"~ "Y2012Q2",
+                             timedummy3=="2012 Q3"~ "Y2012Q3",
+                             timedummy3=="2012 Q4"~ "Y2012Q4",
+                             timedummy3=="2013 Q1"~ "Y2013Q1",
+                             timedummy3=="2013 Q2"~ "Y2013Q2",
+                             timedummy3=="2013 Q3"~ "Y2013Q3",
+                             timedummy3=="2013 Q4"~ "Y2013Q4",
+                             timedummy3=="2014 Q1"~ "Y2014Q1",
+                             timedummy3=="2014 Q2"~ "Y2014Q2",
+                             timedummy3=="2014 Q3"~ "Y2014Q3",
+                             timedummy3=="2014 Q4"~ "Y2014Q4",
+                             timedummy3=="2015 Q1"~ "Y2015Q1",
+                             timedummy3=="2015 Q2"~ "Y2015Q2",
+                             timedummy3=="2015 Q3"~ "Y2015Q3",
+                             timedummy3=="2015 Q4"~ "Y2015Q4",
+                             timedummy3=="2016 Q1"~ "Y2016Q1",
+                             timedummy3=="2016 Q2"~ "Y2016Q2",
+                             timedummy3=="2016 Q3"~ "Y2016Q3",
+                             timedummy3=="2016 Q4"~ "Y2016Q4",
+                             timedummy3=="2017 Q1"~ "Y2017Q1",
+                             timedummy3=="2017 Q2"~ "Y2017Q2",
+                             timedummy3=="2017 Q3"~ "Y2017Q3",
+                             timedummy3=="2017 Q4"~ "Y2017Q4",
+                             janapr18==1~"Y2018janapr",
+                             t1==1~"Yt2",
+                             t2==1~"Yt3"
+                             ))
+unique(df2012$timedummy6)
+df2012$timedummy6<-fct_relevel(df2012$timedummy6, levels="Y2012Q1","Y2012Q2","Y2012Q3","Y2012Q4","Y2013Q1","Y2013Q2","Y2013Q3","Y2013Q4","Y2014Q1","Y2014Q2","Y2014Q3","Y2014Q4","Y2015Q1","Y2015Q2","Y2015Q3","Y2015Q4","Y2016Q1","Y2016Q2","Y2016Q3","Y2016Q4","Y2017Q1","Y2017Q2","Y2017Q3","Y2017Q4","Y2018janapr","Yt2","Yt3")
+```
+
+
+
+```{r}
+df2012_mutated <-  df2012  
+ df2012_mutated$contour=replace_na(df2012_mutated$contour,"Unreported") 
+ df2012_mutated$deck=replace_na(df2012_mutated$deck,"Unreported")   
+ # df2012_mutated$garages_mainroof=replace_na(df2012_mutated$garages_mainroof,"Unreported")  
+ df2012_mutated$roof_material=replace_na(df2012_mutated$roof_material,"Unreported") 
+ df2012_mutated$wall_material=replace_na(df2012_mutated$wall_material,"Unreported") 
+ df2012_mutated$building_age=replace_na(df2012_mutated$building_age,"Unreported")
+df2012_mutated$land_area=replace_na(df2012_mutated$land_area,0.069) 
+df2012_mutated$floor_area=replace_na(df2012_mutated$floor_area,136) 
+```
+
+
+```{r}
+garage=df2012_mutated$garages_mainroof
+
+# replace msising values with Unreported
+garage[is.na(garage)]<-"Unreported"
+
+df2012_mutated$garages_mainroof<-garage
+```
+
+#column 1
+
+
+```{r}
+library(fixest)
+col1<-feols(lp~t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C,data=df2012)
+summary(col1)
+```
+
+```{r }
+#plm_1<-plm(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="pooling", index=c("houseid","year") )
+#summary(plm_1)
+```
+
+```{r}
+#Using D as control group
+col1_D<-feols(lp~t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C,data=df2012)
+summary(col1_D)
+```
+
+
+
+```{r}
+coefplot(col1_D,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+
+```
+```{r}
+# add control of quarter dummy
+col1_q<-feols(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_q),data=df2012)
+summary(col1_q)
+```
+```{r}
+coefplot(col1_q,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+# add control of month dummy
+col1_m<-feols(lp~t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_m),data=df2012)
+summary(col1_m)
+```
+```{r}
+
+coefplot(col1_m,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+# Column 2
+```{r}
+lm_housefeature2<-feols(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(lm_housefeature2)
+```
+```{r}
+
+coefplot(lm_housefeature2,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+#D as contol group
+
+col2_D<-feols(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(col2_D)
+```
+
+```{r}
+coefplot(col2_D,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+
+```
+```{r}
+# add quarter dummy
+col2_q<-feols(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_q)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(col2_q)
+```
+
+```{r}
+coefplot(col2_q,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+
+```
+
+```{r}
+#add month dummy
+col2_m<-feols(lp~t1+t2+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_q)+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(timedummy2) +as.factor(suburb),data=df2012_mutated)
+summary(col2_m)
+```
+
+```{r}
+coefplot(col2_m,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+#column 3
+```{r}
+#plm_year<-plm(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D,data=df2012, model="within",effect="individual", index=c("houseid","year"))
+#summary(plm_year)
+```
+
+```{r}
+col3<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D|houseid+year, data=df2012)
+summary(col3)
+```
+
+```{r}
+coefplot(col3,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# D as control group
+col3_D<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C|houseid+year, data=df2012)
+summary(col3_D)
+```
+
+```{r}
+coefplot(col3_D,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+
+# control quarter
+col3_q<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D|houseid+year+sale_date_q, data=df2012)
+summary(col3_q)
+```
+
+```{r}
+coefplot(col3_q,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+```{r}
+
+# control month
+col3_m<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D|houseid+year+sale_date_m, data=df2012)
+summary(col3_m)
+```
+```{r}
+
+coefplot(col3_m,keep=c("t1:A","t2:A","t1:B","t2:B","t1:D","t2:D"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+
+```
+
+
+```{r}
+# control quarter &D
+col3_qD<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C|houseid+year+sale_date_q, data=df2012)
+summary(col3_qD)
+```
+```{r}
+coefplot(col3_qD,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+```{r}
+# control month and D
+col3_mD<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C|houseid+year+sale_date_m, data=df2012)
+summary(col3_mD)
+```
+
+```{r}
+coefplot(col3_mD,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+When we add additional control of suburb into our main model (Column 3), all effects lost, but this is not what reviewers asked for. 
+```{r}
+
+# control month and D and suburb
+col3_mDs<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C|suburb+houseid+year+sale_date_m, data=df2012)
+summary(col3_mDs)
+```
+
+
+```{r}
+coefplot(col3_mDs,keep=c("t1:A","t2:A","t1:B","t2:B","t1:C","t2:C"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+#Column 4
+```{r}
+housefeature_pretrends<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb)|houseid+year,data=df2012_mutated)
+summary(housefeature_pretrends)
+```
+
+
+```{r}
+
+coefplot(housefeature_pretrends,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# D 
+
+col4_D<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*C+yr2013*C+yr2014*C+yr2015*C+yr2016*C+yr2017*C+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb)|houseid+year,data=df2012_mutated)
+summary(col4_D)
+```
+```{r}
+
+coefplot(col4_D,keep=c("A:t1","A:t2","B:t1","B:t2","C:t1","C:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+#add quarter dummy
+
+
+```
+
+```{r}
+col4_q<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb)+as.factor(sale_date_q)|houseid+year,data=df2012_mutated)
+summary(col4_q)
+```
+```{r}
+
+coefplot(col4_q,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+```{r}
+# add month dummy
+col4_m<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+floor_area+land_area+bedrooms_min+as.factor(building_age)+ as.factor(deck)+ as.factor(wall_material) 
++as.factor(roof_material)+as.factor(garages_mainroof)+ as.factor(contour)+as.factor(suburb)+as.factor(sale_date_m)|houseid+year,data=df2012_mutated)
+summary(col4_m)
+```
+```{r}
+
+coefplot(col4_m,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+# column 5
+```{r}
+# use feols() instead of plm()
+col5<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D|houseid+year,data=df2012)
+summary(col5)
+```
+```{r}
+coefplot(col5,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+```{r}
+# D control
+col5_D<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*C+yr2013*C+yr2014*C+yr2015*C+yr2016*C+yr2017*C+t1+t2+A+B+C+t1*A+t2*A+t1*B+t2*B+t1*C+t2*C|houseid+year,data=df2012)
+summary(col5_D)
+```
+```{r}
+
+coefplot(col5_D,keep=c("A:t1","A:t2","B:t1","B:t2","C:t1","C:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+```{r}
+# add quarter dummy
+col5_q<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_q)|houseid+year,data=df2012)
+summary(col5_q)
+```
+
+```{r}
+coefplot(col5_q,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+```{r}
+# add month dummy
+col5_m<-feols(lp~yr2012+yr2013+yr2014+yr2015+yr2016+yr2017+yr2012*A+yr2013*A+yr2014*A+yr2015*A+yr2016*A+yr2017*A+yr2012*B+yr2013*B+yr2014*B+yr2015*B+yr2016*B+yr2017*B+yr2012*D+yr2013*D+yr2014*D+yr2015*D+yr2016*D+yr2017*D+t1+t2+A+B+D+t1*A+t2*A+t1*B+t2*B+t1*D+t2*D+as.factor(sale_date_m)|houseid+year,data=df2012)
+summary(col5_m)
+```
+```{r}
+coefplot(col5_m,keep=c("A:t1","A:t2","B:t1","B:t2","D:t1","D:t2"), ylim=c(-0.4,0.4), axis.text.x = element_text(size=14))
+```
+
+
+
+
+
+# create new period dummies:
+
+```{r}
+library(lubridate)
+
+# Transform string into date format
+
+# 28 Oct, 2016 Engagement 1 date
+# April 2017, report 1 date, 
+# April 24 2017, OIA1 date
+# Jul 6, 2017 Media 1 date
+# Oct 2017, report 2 date
+# Dec 21, 2017, OIA 2 date 
+# Feb 1, 2018 Media Statements from Canterbury West Coast Secondary Principals Association
+# Feb 26, 2018 report 2 date, OIA 2 reply 
+# Mar 21, 2018.  Media 2 date
+
+date_report1 <- "2017-04-01" # Assumpe both reports released on the first date of that month
+date_report2 <- "2017-10-01"
+date_engagement1<-"2016-10-28"
+date_engagement2<- "2017-09-22"
+date_schools_statement<-"2018-02-01"
+date_media_1<-"2017-07-06"
+date_media_2<-"2018-03-21"
+```
+
+# create new dummy variables of periods for further robustness checks 
+```{r}
+df2012 <-df2012 %>%
+  mutate(period_engagement1 = case_when(df2012$sale_date_new < ymd(date_engagement1) ~ "t1_engagement1",
+                                        df2012$sale_date_new < ymd("2019-11-19") ~ "t2_engagement1",
+                                        TRUE ~ "t3_engagement1"
+                                       ))  %>%
+  mutate(period_engagement2 = case_when(df2012$sale_date_new < ymd(date_engagement2) ~ "t1_engagement2",
+                                        df2012$sale_date_new < ymd("2019-11-19") ~ "t2_engagement2",
+                                        TRUE ~ "t3_engagement2"
+                                        )) %>%
+  mutate(period_report1 = case_when(df2012$sale_date_new < ymd(date_report1) ~ "t1_report1",
+                                       df2012$sale_date_new < ymd("2019-11-19") ~ "t2_report1",
+                                        TRUE ~ "t3_report1")) %>%
+  mutate(period_report2 = case_when(df2012$sale_date_new < ymd(date_report2) ~ "t1_report2",
+                                         df2012$sale_date_new < ymd("2019-11-19") ~ "t2_report2",
+                                        TRUE ~ "t3_report2")) %>%
+  mutate(period_schoolstatement = case_when(df2012$sale_date_new < ymd(date_schools_statement) ~ "t1_schoolstatement",
+                                         df2012$sale_date_new < ymd("2019-11-19") ~ "t2_schoolstatement",
+                                        TRUE ~ "t3_schoolstatement"))%>%
+  mutate(period_media2 = case_when(df2012$sale_date_new < ymd(date_media_2) ~ "t1_media2",
+                                        df2012$sale_date_new < ymd("2019-11-19") ~ "t2_media2",
+                                   TRUE ~ "t3_media2"
+                                       ))%>%
+  mutate(period_media1 = case_when(df2012$sale_date_new < ymd(date_media_1) ~ "t1_media1",
+                                        df2012$sale_date_new < ymd("2019-11-19") ~ "t2_media1",
+                                   TRUE ~ "t3_media1"
+                                       ))
+ 
+```
+
+#create dummy variables for all three periods in different scenarioes
+```{r}
+df2012 <- df2012 %>%
+  mutate(t1_engagement1 = case_when(period_engagement1 == "t1_engagement1" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_engagement1 = case_when(period_engagement1 == "t2_engagement1" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_engagement1 = case_when(period_engagement1 == "t3_engagement1" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t1_engagement2 = case_when(period_engagement2 == "t1_engagement2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_engagement2 = case_when(period_engagement2 == "t2_engagement2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_engagement2 = case_when(period_engagement2 == "t3_engagement2" ~ 1,
+                                    TRUE ~ 0))%>%
+  
+  mutate(t1_report1 = case_when(period_report1 == "t1_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_report1 = case_when(period_report1 == "t2_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_report1 = case_when(period_report1 == "t3_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t1_report2 = case_when(period_report2 == "t1_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_report2 = case_when(period_report2 == "t2_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_report2 = case_when(period_report2 == "t3_report2" ~ 1,
+                                    TRUE ~ 0))%>%
+    mutate(t1_media1 = case_when(period_media1 == "t1_media2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_media1 = case_when(period_media1 == "t2_media2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_media1 = case_when(period_media1 == "t3_media2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t1_media2 = case_when(period_media2 == "t1_media2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t2_media2 = case_when(period_media2 == "t2_media2" ~ 1,
+                                    TRUE ~ 0))%>%
+  mutate(t3_media2 = case_when(period_media2 == "t3_media2" ~ 1,
+                                    TRUE ~ 0))
+
+
+
+```
+
+```{r}
+names(df2012)
+```
+
+
+```{r}
+df2012_mutated <-  df2012  
+ df2012_mutated$contour=replace_na(df2012_mutated$contour,"Unreported") 
+ df2012_mutated$deck=replace_na(df2012_mutated$deck,"Unreported")   
+ # df2012_mutated$garages_mainroof=replace_na(df2012_mutated$garages_mainroof,"Unreported")  
+ df2012_mutated$roof_material=replace_na(df2012_mutated$roof_material,"Unreported") 
+ df2012_mutated$wall_material=replace_na(df2012_mutated$wall_material,"Unreported") 
+ df2012_mutated$building_age=replace_na(df2012_mutated$building_age,"Unreported")
+df2012_mutated$land_area=replace_na(df2012_mutated$land_area,0.069) 
+df2012_mutated$floor_area=replace_na(df2012_mutated$floor_area,136) 
+```
+
+
+```{r}
+garage=df2012_mutated$garages_mainroof
+
+# replace msising values with Unreported
+garage[is.na(garage)]<-"Unreported"
+
+df2012_mutated$garages_mainroof<-garage
+```
+
+#Get the same obs for the pooled cross section models(fix the 30 obs difference)
+```{r}
+bedrooms_min=df2012_mutated$bedrooms_min
+# replace msising values with Unreported
+bedrooms_min[is.na(bedrooms_min)]<-"Unreported"
+#head(bedrooms_min)
+df2012_mutated$bedrooms_min<- bedrooms_min
+```
+
+
+
+```{r}
+#summary(df2012_mutated)
+```
+
+```{r}
+library(fixest)
+
+```
+
+#column 1
+```{r}
+
+```
+
